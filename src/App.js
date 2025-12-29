@@ -1,3 +1,5 @@
+
+
 import React, { useEffect, useState, useRef } from "react";
 import { auth, googleProvider } from "./firebase";
 import { signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
@@ -20,6 +22,8 @@ const getFileIcon = (name) => {
 };
 
 export default function App() {
+const [loadingProfile, setLoadingProfile] = useState(true);
+const [loadingFiles, setLoadingFiles] = useState(true);
   const [user, setUser] = useState(null);
   const [view, setView] = useState("my");
   const [profile, setProfile] = useState({ points: 0 });
@@ -63,55 +67,43 @@ const [profileComplete, setProfileComplete] = useState(false);
   /* ---------------- LOAD DATA ---------------- */
 const loadProfile = async () => {
   try {
+    setLoadingProfile(true);
+
     const t = await token();
     if (!t) return;
-    
-    // Load profile
+
     const profileRes = await fetch("https://profile-eic63re4uq-uc.a.run.app", {
       headers: { Authorization: t },
-      cache: 'no-store'
     });
     const profileData = await profileRes.json();
-    
-    // Calculate points from file count (5 points per file)
-    const fileCountRes = await fetch("https://myfiles-eic63re4uq-uc.a.run.app?q=", {
-      headers: { Authorization: t },
-      cache: 'no-store'
-    });
-    const myFilesData = await fileCountRes.json();
-    const calculatedPoints = myFilesData.length * 5;
-    
-    console.log("File count:", myFilesData.length, "Points:", calculatedPoints);
-    
-    // Merge with calculated points
-    if (profileRes.ok && fileCountRes.ok) {
-      setProfile({ ...profileData, points: calculatedPoints });
-    }
-const isComplete =
-  profileData?.name &&
-  profileData?.contact &&
-  profileData?.temple &&
-  profileData?.zone &&
-  profileData?.service;
 
-setProfileComplete(!!isComplete);
+    setProfile(profileData || {});
 
+    const isComplete =
+      profileData?.name &&
+      profileData?.contact &&
+      profileData?.temple &&
+      profileData?.zone &&
+      profileData?.service;
+
+    setProfileComplete(!!isComplete);
   } catch (e) {
-    console.log("Profile load error:", e);
+    console.log("Profile load error", e);
+  } finally {
+    setLoadingProfile(false);
   }
 };
 
- const loadMyFiles = async (search) => {
+const loadMyFiles = async (search = "") => {
   try {
+    setLoadingFiles(true);
+
     const t = await token();
     if (!t) return;
 
     const res = await fetch(
-      `https://myfiles-eic63re4uq-uc.a.run.app?q=${encodeURIComponent(search || "")}`,
-      {
-        headers: { Authorization: t },
-        cache: "no-store",
-      }
+      `https://myfiles-eic63re4uq-uc.a.run.app?q=${encodeURIComponent(search)}`,
+      { headers: { Authorization: t } }
     );
 
     if (res.ok) {
@@ -120,6 +112,8 @@ setProfileComplete(!!isComplete);
     }
   } catch (e) {
     console.log("My files load error:", e);
+  } finally {
+    setLoadingFiles(false);
   }
 };
 
@@ -147,48 +141,31 @@ setProfileComplete(!!isComplete);
     }
   };
 
-  /* ---------------- LIKE FUNCTION ✅ ---------------- */
-  const toggleLike = async (fileId) => {
-    try {
-      const t = await token();
-      if (!t) return;
-      
-      const res = await fetch(`http://localhost:4000/like/${fileId}`, {
-        method: 'POST',
-        headers: { 
-          Authorization: t,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (res.ok) {
-        const result = await res.json();
-        setGlobalLikes(prev => ({
-          ...prev,
-          [fileId]: result.likes
-        }));
-      }
-    } catch (e) {
-      console.log("Like error:", e);
-    }
-  };
-const saveProfile = async (e) => {
-  e.preventDefault();
-  const t = await token();
-  if (!t) return;
-
-  await fetch("https://profile-eic63re4uq-uc.a.run.app", {
-    method: "POST",
-    headers: {
-      Authorization: t,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(profile)
-  });
-
-  await loadProfile(); // re-check profile
-};
-
+/* ---------------- LIKE FUNCTION (DISABLED) ---------------- */
+// const toggleLike = async (fileId) => {
+//   try {
+//     const t = await token();
+//     if (!t) return;
+//     
+//     const res = await fetch(`http://localhost:4000/like/${fileId}`, {
+//       method: 'POST',
+//       headers: { 
+//         Authorization: t,
+//         'Content-Type': 'application/json'
+//       }
+//     });
+//     
+//     if (res.ok) {
+//       const result = await res.json();
+//       setGlobalLikes(prev => ({
+//         ...prev,
+//         [fileId]: result.likes
+//       }));
+//     }
+//   } catch (e) {
+//     console.log("Like error:", e);
+//   }
+// };
 
   /* ---------------- EFFECTS ---------------- */
 useEffect(() => {
@@ -320,7 +297,7 @@ useEffect(() => {
     filesToUpload.forEach(f => form.append("file", f));
 
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", "http://localhost:4000/upload");
+    xhr.open("POST", "https://upload-eic63re4uq-uc.a.run.app");
     xhr.setRequestHeader("Authorization", t);
     xhr.setRequestHeader("x-description", description);
     xhr.setRequestHeader("x-tags", tags);
@@ -418,11 +395,11 @@ useEffect(() => {
                   <div className="file-likes" style={{marginTop: '0.5rem', fontSize: '0.85rem'}}>
                     <button 
                       className="like-btn"
-                      onClick={() => toggleLike(f.fileId)}
+                      disabled
                       style={{
                         background: 'none',
                         border: 'none',
-                        color: '#10b981',
+                        color: 'not-allowed',
                         cursor: 'pointer',
                         display: 'flex',
                         alignItems: 'center',
@@ -466,7 +443,18 @@ useEffect(() => {
       </div>
     );
   };
+if (user && loadingProfile) {
+  return (
+    <div className="login-container">
+      <div className="login-card">
+        <p>Loading your profile…</p>
+      </div>
+    </div>
+  );
+}
+
 if (user && !profileComplete) {
+
   return (
     <div className="login-container">
       <div className="login-card" style={{ maxWidth: 420 }}>
@@ -609,7 +597,8 @@ if (user && !profileComplete) {
                   />
                 </div>
               </div>
-              {renderCards(myFiles, false)}
+              {loadingFiles ? <p>Loading files…</p> : renderCards(myFiles, false)}
+
             </>
           )}
 
@@ -680,7 +669,8 @@ if (user && !profileComplete) {
                 </div>
               </div>
               
-              {renderCards(globalFiles, true, true)}
+              {loadingFiles ? <p>Loading files…</p> : renderCards(globalFiles, true, true)}
+
             </>
           )}
 
