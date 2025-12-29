@@ -160,6 +160,25 @@ const loadMyFiles = async (search = "") => {
   }
 };
 
+const saveProfile = async (e) => {
+  e.preventDefault();
+
+  const t = await token();
+  if (!t) return;
+
+  await fetch("https://profile-eic63re4uq-uc.a.run.app", {
+    method: "POST",
+    headers: {
+      Authorization: t,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(profile),
+  });
+
+  await loadProfile(); // refresh completion state
+};
+
+
 /* ---------------- LIKE FUNCTION (DISABLED) ---------------- */
 // const toggleLike = async (fileId) => {
 //   try {
