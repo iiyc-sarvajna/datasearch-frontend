@@ -22,6 +22,8 @@ const getFileIcon = (name) => {
 };
 
 export default function App() {
+const [bootstrapping, setBootstrapping] = useState(true);
+
 const [loadingProfile, setLoadingProfile] = useState(true);
 
 const [loadingFiles, setLoadingFiles] = useState(true);
@@ -206,13 +208,26 @@ const saveProfile = async (e) => {
 // };
 
   /* ---------------- EFFECTS ---------------- */
+// Load global files when Global tab is opened
 useEffect(() => {
-  if (user) {
-    loadProfile();
-    loadMyFiles(""); // explicit initial load
- if (view === "global") loadGlobal(); // ✅ ADD THIS LINE
+  if (view === "global") {
+    loadGlobal();
   }
-}, [user, view]);
+}, [view]);
+
+useEffect(() => {
+  const init = async () => {
+    if (!user) return;
+
+    await loadProfile();
+    await loadMyFiles("");
+
+    setBootstrapping(false); // 🔥 ONLY ONCE
+  };
+
+  init();
+}, [user]);
+
 
 /* -------- MY FILES : DEBOUNCED SEARCH (WORKING) -------- */
 useEffect(() => {
@@ -482,6 +497,7 @@ useEffect(() => {
     );
   };
 
+// 1️⃣ Firebase is still checking login
 if (!authReady) {
   return (
     <div className="login-container">
@@ -492,17 +508,18 @@ if (!authReady) {
   );
 }
 
-
-if (user && (loadingProfile || profileComplete === null)) {
+// 2️⃣ First-time app load (profile + files)
+if (bootstrapping) {
   return (
     <div className="login-container">
       <div className="login-card">
-        <p>Loading your profile…</p>
+        <p>Loading Sarvajna…</p>
       </div>
     </div>
   );
 }
 
+// 3️⃣ User logged in but profile NOT completed
 if (user && profileComplete === false) {
   return (
     <div className="login-container">
