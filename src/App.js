@@ -27,7 +27,8 @@ const [loadingFiles, setLoadingFiles] = useState(true);
   const [user, setUser] = useState(null);
   const [view, setView] = useState("my");
   const [profile, setProfile] = useState({ points: 0 });
-const [profileComplete, setProfileComplete] = useState(false);
+const [profileComplete, setProfileComplete] = useState(null);
+
 
   const [myFiles, setMyFiles] = useState([]);
   const [globalFiles, setGlobalFiles] = useState([]);
@@ -443,7 +444,8 @@ useEffect(() => {
       </div>
     );
   };
-if (user && loadingProfile) {
+
+if (user && (loadingProfile || profileComplete === null)) {
   return (
     <div className="login-container">
       <div className="login-card">
@@ -453,8 +455,7 @@ if (user && loadingProfile) {
   );
 }
 
-if (user && !profileComplete) {
-
+if (user && profileComplete === false) {
   return (
     <div className="login-container">
       <div className="login-card" style={{ maxWidth: 420 }}>
