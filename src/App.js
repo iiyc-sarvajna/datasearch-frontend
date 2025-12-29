@@ -23,7 +23,10 @@ const getFileIcon = (name) => {
 
 export default function App() {
 const [loadingProfile, setLoadingProfile] = useState(true);
+
 const [loadingFiles, setLoadingFiles] = useState(true);
+const [authReady, setAuthReady] = useState(false);
+
   const [user, setUser] = useState(null);
   const [view, setView] = useState("my");
   const [profile, setProfile] = useState({ points: 0 });
@@ -58,7 +61,14 @@ const [profileComplete, setProfileComplete] = useState(null);
   ];
 
   /* ---------------- AUTH ---------------- */
-  useEffect(() => onAuthStateChanged(auth, setUser), []);
+ useEffect(() => {
+  const unsub = onAuthStateChanged(auth, (u) => {
+    setUser(u);
+    setAuthReady(true);
+  });
+  return () => unsub();
+}, []);
+
 
   const login = () => signInWithPopup(auth, googleProvider);
   const logout = () => signOut(auth);
@@ -118,29 +128,37 @@ const loadMyFiles = async (search = "") => {
   }
 };
 
-  const loadGlobal = async () => {
-    try {
-      const t = await token();
-      if (!t) return;
-      const res = await fetch("https://searchall-eic63re4uq-uc.a.run.app", {
+ const loadGlobal = async () => {
+  try {
+    setLoadingFiles(true);
+
+    const t = await token();
+    if (!t) return;
+
+    const res = await fetch(
+      "https://searchall-eic63re4uq-uc.a.run.app",
+      {
         headers: { Authorization: t },
-        cache: 'no-store'
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setGlobalFiles(data);
-        
-        // ✅ EXTRACT LIKE COUNTS
-        const likes = {};
-        data.forEach(f => {
-          likes[f.fileId] = f.likes || 0;
-        });
-        setGlobalLikes(likes);
+        cache: "no-store",
       }
-    } catch (e) {
-      console.log("Global files load error:", e);
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      setGlobalFiles(data);
+
+      const likes = {};
+      data.forEach(f => {
+        likes[f.fileId] = f.likes || 0;
+      });
+      setGlobalLikes(likes);
     }
-  };
+  } catch (e) {
+    console.log("Global files load error:", e);
+  } finally {
+    setLoadingFiles(false);
+  }
+};
 
 /* ---------------- LIKE FUNCTION (DISABLED) ---------------- */
 // const toggleLike = async (fileId) => {
@@ -444,6 +462,17 @@ useEffect(() => {
       </div>
     );
   };
+
+if (!authReady) {
+  return (
+    <div className="login-container">
+      <div className="login-card">
+        <p>Initializing session…</p>
+      </div>
+    </div>
+  );
+}
+
 
 if (user && (loadingProfile || profileComplete === null)) {
   return (
