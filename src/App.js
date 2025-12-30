@@ -508,6 +508,26 @@ if (!authReady) {
   );
 }
 
+  if (!user) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <div className="login-header">
+            <div className="logo">
+              <i className="bi bi-cloud-arrow-up-fill"></i>
+              <h1>Sarvajna</h1>
+            </div>
+            <h3>IIYC Data Sharing Portal</h3>
+            <p>Share knowledge, earn points, grow together</p>
+          </div>
+          <button className="btn-google-login" onClick={login}>
+            <i className="bi bi-google"></i> Sign in with Google
+          </button>
+        </div>
+      </div>
+    );
+  }
+
 // 2️⃣ First-time app load (profile + files)
 if (bootstrapping) {
   return (
@@ -583,25 +603,6 @@ if (user && profileComplete === false) {
 }
 
 
-  if (!user) {
-    return (
-      <div className="login-container">
-        <div className="login-card">
-          <div className="login-header">
-            <div className="logo">
-              <i className="bi bi-cloud-arrow-up-fill"></i>
-              <h1>Sarvajna</h1>
-            </div>
-            <h3>IIYC Data Sharing Portal</h3>
-            <p>Share knowledge, earn points, grow together</p>
-          </div>
-          <button className="btn-google-login" onClick={login}>
-            <i className="bi bi-google"></i> Sign in with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="app-container">
