@@ -9,7 +9,8 @@ import "./App.css";
 
 /* ---------------- FILE ICONS ---------------- */
 const getFileIcon = (name) => {
-  const ext = name.split(".").pop().toLowerCase();
+  const ext = name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+
   if (["pdf"].includes(ext)) return "bi-file-earmark-pdf-fill text-danger";
   if (["doc", "docx"].includes(ext)) return "bi-file-earmark-word-fill text-primary";
   if (["xls", "xlsx"].includes(ext)) return "bi-file-earmark-excel-fill text-success";
@@ -90,7 +91,8 @@ const loadProfile = async () => {
     });
     const profileData = await profileRes.json();
 
-    setProfile(profileData || {});
+   setProfile({ points: 0, ...profileData });
+
 
     const isComplete =
       profileData?.name &&
@@ -334,66 +336,183 @@ useEffect(() => {
   };
 
   /* ---------------- UPLOAD ---------------- */
-  const uploadFiles = async () => {
-    if (!filesToUpload.length) {
-      alert("Select files first");
+  /* ---------------- UPLOAD (FIXED WITH PROGRESS BAR) ---------------- */
+/* ---------------- UPLOAD (DEBUG VERSION) ---------------- */
+
+const uploadFiles = async () => {
+  if (!filesToUpload.length) {
+    alert("Select files first");
+    return;
+  }
+
+  const t = await token();
+  if (!t) return;
+
+  setUploading(true);
+  setProgress(0);
+
+  try {
+    for (let i = 0; i < filesToUpload.length; i++) {
+      const file = filesToUpload[i];
+
+      console.log(`[Step 1] Initiating upload for: ${file.name}`);
+
+      // 🔹 STEP 1: Get Resumable URL
+      const initRes = await fetch(
+        "https://upload-eic63re4uq-uc.a.run.app", 
+        {
+          method: "POST",
+          headers: {
+            Authorization: t,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            filename: file.name,
+            mimeType: file.type,
+            fileSize: file.size,
+            description,
+            tags: tags.split(",").map(t => t.trim()).filter(Boolean),
+          }),
+        }
+      );
+
+      if (!initRes.ok) {
+        const err = await initRes.text();
+        throw new Error(`Step 1 Failed (Initiate): ${err}`);
+      }
+      
+      const { uploadUrl, dbId } = await initRes.json();
+      console.log(`[Step 1] Success. DB ID: ${dbId}`);
+
+      // 🔹 STEP 2: Upload to Google Drive (XHR)
+      console.log(`[Step 2] Uploading binary to Google...`);
+      
+const driveFileId = await new Promise((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  let uploadCompleted = false; // ✅ IMPORTANT
+
+  xhr.open("PUT", uploadUrl);
+  xhr.setRequestHeader("Content-Type", file.type);
+
+  xhr.upload.onprogress = (event) => {
+    if (event.lengthComputable) {
+      const filePercent = (event.loaded / event.total) * 100;
+      const totalProgress =
+        ((i * 100) + filePercent) / filesToUpload.length;
+
+      setProgress(Math.round(totalProgress));
+
+      if (filePercent >= 99) {
+        uploadCompleted = true;
+      }
+    }
+  };
+
+  xhr.onload = () => {
+    uploadCompleted = true;
+
+    if (xhr.status >= 200 && xhr.status < 400) {
+      let fileId = null;
+
+      try {
+        fileId = JSON.parse(xhr.responseText)?.id;
+      } catch {}
+
+      if (!fileId) {
+        const loc = xhr.getResponseHeader("Location");
+        const match = loc?.match(/files\/([a-zA-Z0-9_-]+)/);
+        if (match) fileId = match[1];
+      }
+
+      if (!fileId) {
+        const match = uploadUrl.match(/files\/([a-zA-Z0-9_-]+)/);
+        if (match) fileId = match[1];
+      }
+
+      resolve(fileId || "UPLOAD_SUCCESS_NO_ID");
+    } else {
+      reject(new Error(`Step 2 Failed: ${xhr.status}`));
+    }
+  };
+
+  xhr.onerror = () => {
+    // ✅ IGNORE FALSE ERROR IF UPLOAD ALREADY DONE
+    if (uploadCompleted) {
+      console.warn("Ignoring false network error");
+      resolve("UPLOAD_SUCCESS_NO_ID");
       return;
     }
+    reject(new Error("Step 2 Failed: Network Error"));
+  };
 
-    const t = await token();
-    if (!t) return;
+  xhr.send(file);
+});
 
-    setUploading(true);
-    setProgress(0);
-    
-    const form = new FormData();
-    filesToUpload.forEach(f => form.append("file", f));
+      // 🔹 STEP 3: Finalize in Backend (only if we have a valid ID)
+      if (driveFileId && driveFileId !== "UPLOAD_SUCCESS_NO_ID") {
+        console.log(`[Step 3] Finalizing with Drive ID: ${driveFileId}`);
+        
+        const finalizeRes = await fetch("https://finalizeupload-eic63re4uq-uc.a.run.app", {
+          method: "POST",
+          headers: {
+            Authorization: t,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            dbId,
+            driveFileId,
+          }),
+        });
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", "https://upload-eic63re4uq-uc.a.run.app");
-    xhr.setRequestHeader("Authorization", t);
-    xhr.setRequestHeader("x-description", description);
-    xhr.setRequestHeader("x-tags", tags);
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        setProgress(Math.round((e.loaded / e.total) * 100));
-      }
-    };
-
-    xhr.onload = async () => {
-      setUploading(false);
-      setFilesToUpload([]);
-      setDescription("");
-      setTags("");
-      
-      if (xhr.status === 200) {
+        if (!finalizeRes.ok) {
+          const err = await finalizeRes.text();
+          console.warn(`Step 3 Failed (Finalize): ${err}`);
+          // Don't throw - file is already uploaded to Drive
+        } else {
+          console.log(`[Step 3] Success!`);
+        }
+      } else {
+        console.log(`[Step 3] Skipping finalization - file uploaded but ID not captured`);
+        // Optionally update the database with status "uploaded_no_id"
         try {
-          const response = JSON.parse(xhr.responseText);
-          if (response.profile) setProfile(response.profile);
-          if (response.uploaded && response.uploaded.length > 0) {
-            setMyFiles(prev => {
-              const existingIds = new Set(prev.map(f => f.fileId));
-              const newFiles = response.uploaded.filter(f => !existingIds.has(f.fileId));
-              return [...newFiles, ...prev];
-            });
-          }
+          await fetch("https://finalizeUpload-eic63re4uq-uc.a.run.app", {
+            method: "POST",
+            headers: {
+              Authorization: t,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              dbId,
+              driveFileId: "uploaded_but_id_missing",
+            }),
+          });
         } catch (e) {
-          console.log("Response parse error");
+          console.log("Could not update database status");
         }
       }
-      
-      setProgress(0);
-      setTimeout(async () => {
-        setView("my");
-        setMySearch("");
-        await loadProfile();
-        await loadMyFiles("");
-      }, 1500);
-    };
+    }
 
-    xhr.send(form);
-  };
+    // ✅ Success Cleanup
+    alert(`Successfully uploaded ${filesToUpload.length} file(s)!`);
+    setFilesToUpload([]);
+    setDescription("");
+    setTags("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    
+    setView("my");
+    setMySearch("");
+    await loadProfile();
+    await loadMyFiles("");
+
+  } catch (e) {
+    console.error("Upload Error Details:", e);
+    alert(`Upload Failed: ${e?.message || e || "Unknown error"}`);
+
+  } finally {
+    setUploading(false);
+    setProgress(0);
+  }
+};
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => 
@@ -531,9 +650,16 @@ if (!authReady) {
 // 2️⃣ First-time app load (profile + files)
 if (bootstrapping) {
   return (
-    <div className="login-container">
-      <div className="login-card">
-        <p>Loading Sarvajna…</p>
+    <div className="loading-page">
+      <div className="loading-card">
+        <div className="loading-logo">
+          <i className="bi bi-cloud-arrow-up-fill"></i>
+        </div>
+
+        <h2 className="loading-title">Sarvajna</h2>
+        <p className="loading-subtitle">Preparing your workspace…</p>
+
+        <div className="loading-spinner"></div>
       </div>
     </div>
   );
@@ -613,11 +739,13 @@ if (user && profileComplete === false) {
             <span>Sarvajna</span>
           </div>
           <div className="user-profile">
-            <img src={user.photoURL} alt="profile" className="profile-avatar" />
-            <div>
-              <div className="user-name">{user.displayName}</div>
-              <div className="user-points">⭐ {profile.points} pts</div>
-            </div>
+            <img src={user.photoURL} alt="profile" className="profile-avatar" referrerPolicy="no-referrer"
+  crossOrigin="anonymous"/>
+            <div className="user-info">
+  <div className="user-name">{user.displayName}</div>
+  <div className="user-points">⭐ {profile.points} pts</div>
+</div>
+
             <button className="btn-logout" onClick={logout}>
               <i className="bi bi-box-arrow-right"></i>
             </button>
